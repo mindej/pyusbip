@@ -64,6 +64,7 @@ USB_REQ_SET_ADDRESS       = 0x05
 USB_REQ_SET_CONFIGURATION = 0x09
 USB_REQ_SET_INTERFACE     = 0x0B
 
+USB_EACCES = 13
 USB_ENOENT = 2
 USB_EPIPE = 32
 
@@ -172,6 +173,10 @@ class USBIPConnection:
             dev_busid = "{}-{}".format(dev.getBusNumber(), dev.getDeviceAddress())
             if busid == dev_busid:
                 hnd = dev.open()
+                try:
+                    hnd.setAutoDetachKernelDriver(True)
+                except usb1.USBError:
+                    self.say('auto-detach kernel driver not supported or failed')
                 self.say('opened device {}'.format(busid))
                 devid = dev.getBusNumber() << 16 | dev.getDeviceAddress()
                 self.devices[devid] = USBIPDevice(devid, hnd)
@@ -213,7 +218,17 @@ class USBIPConnection:
                 raise USBIPUnimplementedException("USB_REQ_SET_ADDRESS")
             elif bRequestType == USB_RECIP_DEVICE and bRequest == USB_REQ_SET_CONFIGURATION:
                 self.say('set configuration: {}'.format(wValue))
-                dev.hnd.setConfiguration(wValue)
+                try:
+                    dev.hnd.setConfiguration(wValue)
+                except usb1.USBErrorAccess:
+                    self.say('set configuration failed: access denied')
+                    resp = struct.pack(">IIIIIiiiii8s",
+                        USBIP_RET_SUBMIT, seqnum,
+                        0, 0, 0,
+                        -USB_EACCES, 0, 0, 0, 0,
+                        b'')
+                    self.writer.write(resp)
+                    return
                 
                 # Claim all the interfaces.
                 config = None
@@ -223,13 +238,33 @@ class USBIPConnection:
                         break
                 for i in range(config.getNumInterfaces()):
                     self.say('  claim interface: {}'.format(i))
-                    dev.hnd.claimInterface(i)
+                    try:
+                        dev.hnd.claimInterface(i)
+                    except usb1.USBErrorAccess:
+                        self.say('  claim interface {} failed: access denied'.format(i))
+                        resp = struct.pack(">IIIIIiiiii8s",
+                            USBIP_RET_SUBMIT, seqnum,
+                            0, 0, 0,
+                            -USB_EACCES, 0, 0, 0, 0,
+                            b'')
+                        self.writer.write(resp)
+                        return
                 
                 fakeit = True
             elif bRequestType == USB_RECIP_INTERFACE and bRequest == USB_REQ_SET_INTERFACE:
                 self.say('set interface alt setting: {} -> {}'.format(wIndex, wValue))
-                dev.hnd.claimInterface(wIndex)
-                dev.hnd.setInterfaceAltSetting(wIndex, wValue)
+                try:
+                    dev.hnd.claimInterface(wIndex)
+                    dev.hnd.setInterfaceAltSetting(wIndex, wValue)
+                except usb1.USBErrorAccess:
+                    self.say('set interface alt setting failed: access denied')
+                    resp = struct.pack(">IIIIIiiiii8s",
+                        USBIP_RET_SUBMIT, seqnum,
+                        0, 0, 0,
+                        -USB_EACCES, 0, 0, 0, 0,
+                        b'')
+                    self.writer.write(resp)
+                    return
                 fakeit = True
             
             try:

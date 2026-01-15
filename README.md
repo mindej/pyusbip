@@ -32,3 +32,7 @@ Following is a rough recipe for getting started with forwarding a USB device usi
 ## Contact
 
 `pyusbip` is unsupported.  Please use [the GitHub repository](https://github.com/jwise/pyusbip) to submit patches.  If you need to, you can [contact the author](https://joshuawise.com/contact).
+
+## MAC
+
+Tested on mac OS 15.7.X. on arm cpu
